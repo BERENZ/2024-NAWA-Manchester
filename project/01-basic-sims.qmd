@@ -1,0 +1,222 @@
+---
+title: "Simulation studies for mis-classification in non-probability surveys"
+author: "Maciej Beręsewicz"
+format: 
+  html:
+    self-contained: true
+    toc: true
+---
+
+## Basic setup
+
+Read the packages for the simulation studies
+
+```{r setup, message=FALSE, warning=FALSE}
+library(simex) ## only confusion matrix is provided
+library(augSIMEX) ## more advanced methods
+library(nonprobsvy)
+library(data.table)
+```
+
+## Simulation studies
+
+### Simulation study #1
+
+This is the first sumulation study for the project. In this simulation study I check the performance of MC-SIMEX method for mis-classification where at least one auxiliary variable is measured with error. Then I verify the case when the target variable is also measured with error. 
+
+#### Simulation with mis-classified auxiliary variables 
+
+##### Description
+
+Here is the description for the simulation study
+
++ $N=100000$ -- finite population size
++ $X_1$ -- categorical variable with 3 levels: `c("S", "M", "L")` with probabilities `c(0.7, 0.2, 0.1)`. This variable may refer to the size of the business entity.
++ $X_2 \sim \text{Bernoulli}(0.7)$ -- categorical variable referring to business sector (say 1=private, 0=public).
++ $X_3 \sim \text{Bernoulli}(0.5)$ -- categorical variable referring to some characteristic that is equally distributed in the population.
+
+I create the target variable $Y$ from Bernoulli distribution with probabilities generated from the logistic distribution where linear part is given by 
+
+$$
+-1 + 0.5 \times I(X_1 = \text{L}) + 0.5 \times I(X_2 = \text{Public}) + -0.3 \times X3,
+$$
+where $I(\cdot)$ is an indicator variable. So the target variable is related with all variables considered in the simulation study.
+
+I generate two samples:
+
++ non-probability sample $S_A$ with inclusion generated from Bernoulli distribution with probabilities generated from the logistic distribution with linear part given by
+
+$$
+-4 + 3 \times I(X_1 = \text{L})
+$$
+and where the expected sample size is about 4,500.
+
++ probability sample $S_B$ with 1,000 sample size selected using SRS.
+
+Next, for each simulation run I introduce classification errors for $X_1$ and $X_2$ given the following confusion matrices which elements are $\pi_{ij} = P(X^* == k | X == k)$ where $k$ are levels
+
+$$
+\Gamma_{X_1} = \begin{bmatrix}
+0.8 & 0.1 & 0.05 \\
+0.15 & 0.7 &  0.15\\
+0.05 &  0.2 &  0.8
+\end{bmatrix}
+$$
+and
+
+$$
+\Gamma_{X_2} = 
+\begin{bmatrix}
+0.80 & 0.15\\
+0.20 & 0.85
+\end{bmatrix}
+$$
+where rows and columns in $\Gamma_{X_1}$ and $\Gamma_{X_2}$ refer to levels i.e. "S", "M", "L" and  Private and Public respectively. So it means that in each simulation run instead of $X_1$ and $X_2$ we observe $X_1^*$ and $X_2^*$ in non-probability sample.
+
+
+
+For this simulation study I am intereted in $\mu_Y$ which is population mean (share) of $Y$. In the simulation study I compare the following estimators:
+
++ naive estimator $\mu_{Y}^{\text{Naive}}$ which is a sample mean based on non-probability sample,
++ two estimators when no mis-classification is observed in non-probability sample:
+  + inverse probability weighted (IPW) estimator with calibration constraints $\mu_{Y}^{IPW}$ on $X_1$, $X_2$ and $X_3$ where calibration is performed with totals estimated from the probability sample,
+  + mass imputation (MI) estimator based on logistic regression $\mu_Y^{MI}$ using all auxiliary variables $X_1$, $X_2$ and $X_3$
++ two estimators when mis-classification is observed for non-probability sample *only*:
+  + IPW with mis-classification in $X_1$ and $X_2$ which is denoted as $\mu_{Y}^{IPW*}$
+  + MI with mis-classification in $X_1$ and $X_2$ which is denoted as $\mu_{Y}^{MI*}$
++ mass imputation estimator where mis-classification in $X_1$ and $X_2$ is corrected using MC-SIMEX method assuming that the confusion matrix is known. This estimator is denoted as $\mu_{Y}^{MC-MI}$. 
+
+##### Codes to run the simulation
+
+In the code below I generate population data
+
+```{r population-data}
+set.seed(12345)
+N <- 100000  ## population size
+n_b <- 1000 ## probability sample
+X1 <- sample(c("S", "M", "L"), N, prob = c(0.7, 0.2, 0.1), replace = T) ## X1 variable
+X1 <- factor(X1, c("S", "M", "L"))
+X2 <- rbinom(N, 1, prob = 0.7) ## X2 variable
+X2 <- factor(X2, 0:1, c("Pub", "Priv")) 
+X3 <- rbinom(N, 1, prob = 0.5) ## X3 variable 
+Y <- rbinom(N, 1, plogis(-1 + 0.5*(X1 == "L") + 0.5*(X2=="Priv") - X3)) ## target variable
+pi_A <- plogis(-4 + 3*(X1 == "L")) ## selection to non-probability sample
+pop_data <- data.frame(X1,X2,X3,Y,pi_A) ## population data frame
+head(pop_data)
+```
+
+The known population mean of $Y$ is `r round(mean(Y)*100,2)`%.
+
+Now, I set up the confusion matrices
+
+```{r}
+Gamma_X1 <- matrix(c(0.8,  0.1, 0.05,
+                     0.15, 0.7, 0.15,
+                     0.05, 0.2, 0.8), nrow = 3, byrow = T)
+  
+rownames(Gamma_X1) <- colnames(Gamma_X1) <- c("S", "M", "L")
+  
+Gamma_X2 <- matrix(c(0.8, 0.15,
+                     0.2, 0.85), byrow = T, ncol = 2)
+
+rownames(Gamma_X2) <- colnames(Gamma_X2) <- c("Pub", "Priv")
+
+```
+
+Code to run the simulation
+
+```{r simulation-codes}
+n_reps <- 100
+results <- list()
+
+for (b in 1:n_reps) {
+  set.seed(b)
+  if( b %% 20 == 0) print(b)
+  ## probability sample
+  sample_b <- pop_data[sample(1:N, n_b), ]
+  sample_b$sample_w <- N/n_b
+  sample_b_svy <- svydesign(ids=~1, weights = ~ sample_w, data=sample_b)
+  
+  ## nonprobability sample
+  sample_a <- pop_data[rbinom(N, 1, pop_data$pi_A) == 1, ]
+  
+  # without error -----------------------------------------------------------
+  est_ipw <- nonprob(selection = ~ X1 + X2 + X3,
+                     data = sample_a,
+                     svydesign = sample_b_svy,
+                     target = ~ Y, 
+                     control_selection = controlSel(h = 1, est_method_sel = "gee"))
+  
+  est_mi <- nonprob(outcome = Y ~ X1 + X2 + X3,
+                    data = sample_a,
+                    svydesign = sample_b_svy, 
+                    family_outcome = "binomial")
+  
+  ## with errors
+  sample_a_with_error <- sample_a
+  
+  ## generate errors
+  class_erros <- misclass(data.frame(X1 = sample_a_with_error$X1,
+                                     X2 = sample_a_with_error$X2), 
+                          list(X1=Gamma_X1, X2=Gamma_X2), k = 1)
+  
+  sample_a_with_error$X1  <- class_erros$X1
+  sample_a_with_error$X2  <- class_erros$X2
+  
+  est_ipw_err <- nonprob(selection = ~ X1 + X2 + X3,
+                         data = sample_a_with_error,
+                         svydesign = sample_b_svy,
+                         target = ~ Y, 
+                         control_selection = controlSel(h = 1, est_method_sel = "gee"))
+  
+  est_mi_err <- nonprob(outcome = Y ~ X1 + X2 + X3,
+                        data = sample_a_with_error,
+                        svydesign = sample_b_svy, 
+                        family_outcome = "binomial")
+  
+  ## naive model
+  est_mi_err_naive <- glm(Y ~ X1 + X2 + X3, family = binomial, x = TRUE, y = TRUE,
+                          data = sample_a_with_error)
+  
+  ## model parameters corrected by MC-SIMEX approach
+  res_mi <- simex::mcsimex(model = est_mi_err_naive,
+                           mc.matrix = list(X1 = Gamma_X1, X2 = Gamma_X2),
+                           SIMEXvariable = c("X1", "X2"),
+                           asymptotic = FALSE,
+                           fitting.method	= "quadratic",
+                           B = 50)
+  
+  results[[b]] <- data.frame(b, 
+                             mu_naive = mean(sample_a$Y),
+                             mu_ipw = est_ipw$output$mean[1], 
+                             mu_mi = est_mi$output$mean[1],
+                             mu_ipw_star = est_ipw_err$output$mean[1], 
+                             mu_mi_star = est_mi_err$output$mean[1],
+                             mu_mc_mi = weighted.mean(predict(res_mi, sample_b_svy$variables, type = "response"), 
+                                                      weights(sample_b_svy)))
+  
+}
+
+results_df <- rbindlist(results)
+```
+
+Boxplots with the simulation results
+
+```{r}
+boxplot(results_df[,-1]-mean(Y))
+abline(a=0,b=0,h=1,col='red')
+```
+Bias, SD and RMSE
+```{r}
+results <- rbind(
+  colMeans(results_df[,-1]) - mean(Y),
+  apply(results_df[,-1], 2, sd),
+  sqrt((colMeans(results_df[,-1]) - mean(Y))^2 + apply(results_df[,-1], 2, var)) 
+)
+rownames(results) <- c("bias", "SD", "RMSE")
+as.data.frame(results)
+```
+
+
+
+

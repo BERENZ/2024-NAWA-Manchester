@@ -1,0 +1,11 @@
+"0","library(sampling)
+"
+"2","
+Attaching package: ‘sampling’
+
+"
+"2","The following objects are masked from ‘package:survival’:
+
+    cluster, strata
+
+"
