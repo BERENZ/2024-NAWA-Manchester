@@ -14,6 +14,7 @@ Read the packages for the simulation studies
 ```{r setup, message=FALSE, warning=FALSE}
 library(simex) ## only confusion matrix is provided
 library(augSIMEX) ## more advanced methods
+library(misclassGLM)
 library(nonprobsvy)
 library(data.table)
 ```
@@ -22,7 +23,7 @@ library(data.table)
 
 ### Simulation study #1
 
-This is the first sumulation study for the project. In this simulation study I check the performance of MC-SIMEX method for mis-classification where at least one auxiliary variable is measured with error. Then I verify the case when the target variable is also measured with error. 
+This is the first simulation study for the project. In this simulation study I check the performance of MC-SIMEX method for mis-classification where at least one auxiliary variable is measured with error. Then I verify the case when the target variable is also measured with error. 
 
 #### Simulation with mis-classified auxiliary variables 
 
@@ -75,7 +76,7 @@ where rows and columns in $\Gamma_{X_1}$ and $\Gamma_{X_2}$ refer to levels i.e.
 
 
 
-For this simulation study I am intereted in $\mu_Y$ which is population mean (share) of $Y$. In the simulation study I compare the following estimators:
+For this simulation study I am interested in $\mu_Y$ which is population mean (share) of $Y$. In the simulation study I compare the following estimators:
 
 + naive estimator $\mu_{Y}^{\text{Naive}}$ which is a sample mean based on non-probability sample,
 + two estimators when no mis-classification is observed in non-probability sample:
@@ -88,28 +89,10 @@ For this simulation study I am intereted in $\mu_Y$ which is population mean (sh
 
 ##### Codes to run the simulation
 
-In the code below I generate population data
-
-```{r population-data}
-set.seed(12345)
-N <- 100000  ## population size
-n_b <- 1000 ## probability sample
-X1 <- sample(c("S", "M", "L"), N, prob = c(0.7, 0.2, 0.1), replace = T) ## X1 variable
-X1 <- factor(X1, c("S", "M", "L"))
-X2 <- rbinom(N, 1, prob = 0.7) ## X2 variable
-X2 <- factor(X2, 0:1, c("Pub", "Priv")) 
-X3 <- rbinom(N, 1, prob = 0.5) ## X3 variable 
-Y <- rbinom(N, 1, plogis(-1 + 0.5*(X1 == "L") + 0.5*(X2=="Priv") - X3)) ## target variable
-pi_A <- plogis(-4 + 3*(X1 == "L")) ## selection to non-probability sample
-pop_data <- data.frame(X1,X2,X3,Y,pi_A) ## population data frame
-head(pop_data)
-```
-
-The known population mean of $Y$ is `r round(mean(Y)*100,2)`%.
-
-Now, I set up the confusion matrices
+I set up the confusion matrices
 
 ```{r}
+## rows - X*, columns -- X (true)
 Gamma_X1 <- matrix(c(0.8,  0.1, 0.05,
                      0.15, 0.7, 0.15,
                      0.05, 0.2, 0.8), nrow = 3, byrow = T)
@@ -123,6 +106,26 @@ rownames(Gamma_X2) <- colnames(Gamma_X2) <- c("Pub", "Priv")
 
 ```
 
+In the code below I generate population data
+
+```{r population-data}
+set.seed(12345)
+N <- 100000  ## population size
+n_b <- 1000 ## probability sample
+X1 <- sample(c("S", "M", "L"), N, prob = c(0.6, 0.3, 0.1), replace = T) ## X1 variable
+X1 <- factor(X1, c("S", "M", "L"))
+X2 <- rbinom(N, 1, prob = 0.7) ## X2 variable
+X2 <- factor(X2, 0:1, c("Pub", "Priv")) 
+X3 <- rbinom(N, 1, prob = 0.5) ## X3 variable 
+Y <- rbinom(N, 1, plogis(1 + 5*(X1 == "L") - 3*(X2 == "Pub"))) ## target variable
+pi_A <- plogis(-2 + 2*(X1 == "L") + (X2 == "Priv")) ## selection to non-probability sample ~ 20%
+pop_data <- data.table(X1,X2,X3,Y,pi_A) ## population data frame
+head(pop_data)
+```
+
+The known population mean of $Y$ is `r round(mean(Y)*100,2)`%.
+
+
 Code to run the simulation
 
 ```{r simulation-codes}
@@ -131,7 +134,7 @@ results <- list()
 
 for (b in 1:n_reps) {
   set.seed(b)
-  if( b %% 20 == 0) print(b)
+  print(b)
   ## probability sample
   sample_b <- pop_data[sample(1:N, n_b), ]
   sample_b$sample_w <- N/n_b
@@ -141,11 +144,11 @@ for (b in 1:n_reps) {
   sample_a <- pop_data[rbinom(N, 1, pop_data$pi_A) == 1, ]
   
   # without error -----------------------------------------------------------
-  est_ipw <- nonprob(selection = ~ X1 + X2 + X3,
+  est_ipw <- tryCatch(nonprob(selection = ~ X1 + X2 + X3,
                      data = sample_a,
                      svydesign = sample_b_svy,
-                     target = ~ Y, 
-                     control_selection = controlSel(h = 1, est_method_sel = "gee"))
+                     target = ~ Y), error = function(e) "error")
+  if (class(est_ipw)[1] == "character") next
   
   est_mi <- nonprob(outcome = Y ~ X1 + X2 + X3,
                     data = sample_a,
@@ -153,21 +156,21 @@ for (b in 1:n_reps) {
                     family_outcome = "binomial")
   
   ## with errors
-  sample_a_with_error <- sample_a
+  sample_a_with_error <- copy(sample_a)
+  sample_a_with_error[X2 == "Pub",  X2_star := factor(sample(c("Pub", "Priv"), size=.N, prob=Gamma_X2[, 1], replace = T), levels = c("Pub", "Priv"))]
+  sample_a_with_error[X2 == "Priv", X2_star := factor(sample(c("Pub", "Priv"), size=.N, prob=Gamma_X2[, 2], replace = T), levels = c("Pub", "Priv"))]
+  sample_a_with_error[X1 == "S",    X1_star := factor(sample(c("S", "M", "L"), size=.N, prob=Gamma_X1[,1], replace = T), levels = c("S", "M", "L"))]
+  sample_a_with_error[X1 == "M",    X1_star := factor(sample(c("S", "M", "L"), size=.N, prob=Gamma_X1[,2], replace = T), levels = c("S", "M", "L"))]
+  sample_a_with_error[X1 == "L",    X1_star := factor(sample(c("S", "M", "L"), size=.N, prob=Gamma_X1[,3], replace = T), levels = c("S", "M", "L"))]
+  sample_a_with_error[, X1:=factor(X1_star, levels = c("S", "M", "L"))]
+  sample_a_with_error[, X2:=factor(X2_star, levels = c("Pub", "Priv"))]
   
-  ## generate errors
-  class_erros <- misclass(data.frame(X1 = sample_a_with_error$X1,
-                                     X2 = sample_a_with_error$X2), 
-                          list(X1=Gamma_X1, X2=Gamma_X2), k = 1)
-  
-  sample_a_with_error$X1  <- class_erros$X1
-  sample_a_with_error$X2  <- class_erros$X2
-  
-  est_ipw_err <- nonprob(selection = ~ X1 + X2 + X3,
+  est_ipw_err <- tryCatch(nonprob(selection = ~ X1 + X2 + X3,
                          data = sample_a_with_error,
                          svydesign = sample_b_svy,
-                         target = ~ Y, 
-                         control_selection = controlSel(h = 1, est_method_sel = "gee"))
+                         target = ~ Y), error = function(e) "error")
+  
+  if (class(est_ipw_err)[1] == "character") next
   
   est_mi_err <- nonprob(outcome = Y ~ X1 + X2 + X3,
                         data = sample_a_with_error,
@@ -175,16 +178,29 @@ for (b in 1:n_reps) {
                         family_outcome = "binomial")
   
   ## naive model
+
   est_mi_err_naive <- glm(Y ~ X1 + X2 + X3, family = binomial, x = TRUE, y = TRUE,
                           data = sample_a_with_error)
   
   ## model parameters corrected by MC-SIMEX approach
-  res_mi <- simex::mcsimex(model = est_mi_err_naive,
+  res_mi_q <- simex::mcsimex(model = est_mi_err_naive,
                            mc.matrix = list(X1 = Gamma_X1, X2 = Gamma_X2),
                            SIMEXvariable = c("X1", "X2"),
-                           asymptotic = FALSE,
                            fitting.method	= "quadratic",
-                           B = 50)
+                            asymptotic = FALSE,
+                            jackknife.estimation	= FALSE,
+                            B = 100,
+                            lambda = c(0.01, 0.05, 0.10, 0.5, 1))
+  
+  res_mi_l <- refit(res_mi_q, fitting.method	= "linear", asymptotic = FALSE,
+                            jackknife.estimation	= FALSE)
+  
+  sample_b_svy <- update(sample_b_svy, 
+         y_mi_q = predict(res_mi_q, sample_b_svy$variables, type = "response"),
+         y_mi_l = predict(res_mi_l, sample_b_svy$variables, type = "response"))
+  
+  est <- svymean(~y_mi_q+y_mi_l, design = sample_b_svy)
+  est
   
   results[[b]] <- data.frame(b, 
                              mu_naive = mean(sample_a$Y),
@@ -192,8 +208,8 @@ for (b in 1:n_reps) {
                              mu_mi = est_mi$output$mean[1],
                              mu_ipw_star = est_ipw_err$output$mean[1], 
                              mu_mi_star = est_mi_err$output$mean[1],
-                             mu_mc_mi = weighted.mean(predict(res_mi, sample_b_svy$variables, type = "response"), 
-                                                      weights(sample_b_svy)))
+                             mu_mc_mi_q = est[1],
+                             mu_mc_mi_l = est[2])
   
 }
 
@@ -203,8 +219,8 @@ results_df <- rbindlist(results)
 Boxplots with the simulation results
 
 ```{r}
-boxplot(results_df[,-1]-mean(Y))
-abline(a=0,b=0,h=1,col='red')
+boxplot((results_df[,-1]-mean(pop_data$Y))/mean(pop_data$Y)*100)
+abline(a=0,b=0,h=0,col='red')
 ```
 Bias, SD and RMSE
 ```{r}
@@ -219,4 +235,21 @@ as.data.frame(results)
 
 
 
+
+```{r}
+class_erros <- misclass(data.frame(X1 = sample_a_with_error$X1,
+                                   X2 = sample_a_with_error$X2), 
+                        list(X1=Gamma_X1, X2=Gamma_X2), k = 1)
+
+table(sample_a_with_error$X1, class_erros$X1) |> prop.table(margin = 1)
+```
+
+```{r}
+est_mi_err <- nonprob(outcome = Y ~ X1 + X2 + X3,
+                      data = sample_a_with_error,
+                      svydesign = sample_b_svy, 
+                      family_outcome = "binomial")
+
+mm <- misclassGLM()
+```
 

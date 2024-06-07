@@ -2,4 +2,6 @@
 
 ## Simulations
 
++ Simulation based on the book "Handbook of web surveys (10.2)" ([initial results here](https://htmlpreview.github.io/?https://github.com/BERENZ/2024-NAWA-Manchester/blob/main/project/02-handbook-of-web-surveys-2.html))
+
 + initial simulation for MC-SIMEX approach ([initial results here](https://htmlpreview.github.io/?https://github.com/BERENZ/2024-NAWA-Manchester/blob/main/project/01-basic-sims.html))
