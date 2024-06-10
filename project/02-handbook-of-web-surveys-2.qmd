@@ -70,7 +70,7 @@ Codes to generate population data
 
 ```{r}
 set.seed(2024)
-N <- 30000
+N <- 100000
 pop_data <- data.table(age = sample(c("Young", "Middle-aged", "Old"), size = N, c(0.40, 0.35, 0.25), replace = T),
                        ethnic = sample(c("Native", "Nonnative"), size = N, prob = c(0.85, 0.15), replace = T))
 
@@ -222,11 +222,11 @@ We report:
 
 ```{r cache = TRUE}
 set.seed(123)
-n_sims <- 100 ## number of simulations
+n_sims <- 10 ## number of simulations
 n_B <- 1000 
 n_valid <- 100 ## size of validation sample
-stratified <- FALSE
-B_simex <- 100
+stratified <- TRUE
+B_simex <- 50
 results  <- list() 
 
 for (r in 1:n_sims) {
@@ -253,15 +253,18 @@ for (r in 1:n_sims) {
   
   ## with errors (estimated from S_A only)
   S_A_err <- copy(S_A)
+
   if (stratified) {
-   S_A_err_valid_sample <- copy(S_A_err[,.SD[sample(.N, n_valid)], by = .(age_m, ethnic_m)])  
+    S_A_err[, w:=.N/n_valid, .(age_m, ethnic_m)]
+    S_A_err_valid_sample <- copy(S_A_err[,.SD[sample(.N, n_valid)], by = .(age_m, ethnic_m)])  
   } else {
-   S_A_err_valid_sample <- copy(S_A_err[sample(1:.N, n_valid*6)])
+    S_A_err[, w:=.N/(n_valid*6)]
+    S_A_err_valid_sample <- copy(S_A_err[sample(1:.N, n_valid*6)])
   }
   
   sampled_ids <- S_A_err_valid_sample$id
-  error_age <- as.matrix(prop.table(xtabs(~ age_m + age, data = S_A_err_valid_sample), margin = 2))
-  error_eth <- as.matrix(prop.table(xtabs(~ ethnic_m + ethnic, data = S_A_err_valid_sample), margin = 2))
+  error_age <- as.matrix(prop.table(xtabs(w~ age_m + age, data = S_A_err_valid_sample), margin = 2))
+  error_eth <- as.matrix(prop.table(xtabs(w~ ethnic_m + ethnic, data = S_A_err_valid_sample), margin = 2))
   S_A_err[, age := NULL]
   S_A_err[, ethnic := NULL]
   S_A_err[, age := age_m]
