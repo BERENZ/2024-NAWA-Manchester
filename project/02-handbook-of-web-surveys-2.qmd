@@ -222,7 +222,7 @@ We report:
 
 ```{r cache = TRUE}
 set.seed(123)
-n_sims <- 10 ## number of simulations
+n_sims <- 100 ## number of simulations
 n_B <- 1000 
 n_valid <- 100 ## size of validation sample
 stratified <- TRUE
@@ -352,7 +352,7 @@ results_df <- rbindlist(results, idcol = "rep")
 
 Boxplot of point estimates from simulations
 
-```{r}
+```{r fig-results}
 results_df[,1:9] |>
   melt(id.vars = 1) |>
   ggplot(data = _, aes(x = variable, y= value)) +
