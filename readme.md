@@ -20,4 +20,4 @@ The project aims to develop new estimators for non-probability samples suffering
 
 ### Presentations
 
-- Social Statistics Demography Workshop -- 19 June 2024 University of Manchester
+- [talk](presentations/manchester_seminar_nawa.pdf) at the Social Statistics Demography Workshop -- 19 June 2024 University of Manchester
