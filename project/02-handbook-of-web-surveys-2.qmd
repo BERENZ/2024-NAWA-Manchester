@@ -21,6 +21,7 @@ library(vcd)
 library(VIM)
 library(ggplot2)
 library(knitr)
+source("../codes/functions.R")
 ```
 
 ## Simulation study
@@ -302,6 +303,8 @@ for (r in 1:n_sims) {
                      asymptotic = FALSE,
                      jackknife.estimation	= FALSE)
   
+  
+  
   S_B_svy <- update(S_B_svy, 
          NEP_li = predict(res_mi_li, S_B_svy$variables, type = "response"),
          NEP_qu = predict(res_mi_qu, S_B_svy$variables, type = "response"),
@@ -328,7 +331,29 @@ for (r in 1:n_sims) {
     family_outcome = "binomial"
   )
 
+  ## MLE under misclass in age 
+  ## imputation based on multinom
+  dd <- nnet::multinom(age ~ age_m + ethnic_m, data = S_A_err_valid_sample, trace = FALSE)
+  probs <- predict(dd, newdata = S_A_err, type = "probs")
 
+  
+  optim(par = rep(0, 4), 
+      fn = log_reg_misclass, 
+      y = S_A_err$NEP, 
+      x = model.matrix(~ethnic, data = S_A_err), 
+      probs = probs,
+      m = matrix(c(0, 1, 0, 0, 0, 1), nrow = 3),
+      method = "BFGS") -> ml_res
+  
+  Xs <- model.matrix(~ethnic + age, data = S_B)
+
+  preds <- plogis(Xs %*% ml_res$par)
+  
+  S_B_svy <- update(S_B_svy, NEP_mle = preds)
+  
+  res_mle <- svymean(~NEP_mle, design = S_B_svy)
+  res_mle_ci <- confint(res_mle)
+  
   results[[r]] <- data.frame(
     nep_srs = est_sb[1],
     nep_naive = est_sa_naive[1],
@@ -338,12 +363,14 @@ for (r in 1:n_sims) {
     nep_qu = res[2],
     nep_ll = res[3],
     nep_imp = est_sa_mi_imp$output$mean[1],
+    nep_mle = res_mle[1],
     cr_cor = est_sa_mi$confidence_interval[1, 1] < mean(pop_data$NEP) & est_sa_mi$confidence_interval[1, 2] > mean(pop_data$NEP), 
     cr_err = est_sa_mi_errors$confidence_interval[1, 1] < mean(pop_data$NEP) & est_sa_mi_errors$confidence_interval[1, 2] > mean(pop_data$NEP), 
     cr_li = res_ci[1, 1] < mean(pop_data$NEP) & res_ci[1, 2] > mean(pop_data$NEP),
     cr_qu = res_ci[2, 1] < mean(pop_data$NEP) & res_ci[2, 2] > mean(pop_data$NEP),
     cr_ll = res_ci[3, 1] < mean(pop_data$NEP) & res_ci[3, 2] > mean(pop_data$NEP),
-    cr_imp = est_sa_mi_imp$confidence_interval[1, 1] < mean(pop_data$NEP) & est_sa_mi_imp$confidence_interval[1, 2] > mean(pop_data$NEP)
+    cr_imp = est_sa_mi_imp$confidence_interval[1, 1] < mean(pop_data$NEP) & est_sa_mi_imp$confidence_interval[1, 2] > mean(pop_data$NEP),
+    cr_mle = res_mle_ci[1, 1] < mean(pop_data$NEP) & res_mle_ci[1, 2] > mean(pop_data$NEP)
   )
 }
 
@@ -353,7 +380,7 @@ results_df <- rbindlist(results, idcol = "rep")
 Boxplot of point estimates from simulations
 
 ```{r fig-results}
-results_df[,1:9] |>
+results_df[,1:10] |>
   melt(id.vars = 1) |>
   ggplot(data = _, aes(x = variable, y= value)) +
   geom_boxplot() +
@@ -365,12 +392,12 @@ results_df[,1:9] |>
 Coverage rate
 
 ```{r}
-colMeans(results_df[,10:15]) |> kable()
+colMeans(results_df[,11:17]) |> kable()
 ```
 Results of the simulation
 
 ```{r}
-results_df[,1:9] |>
+results_df[,1:10] |>
   melt(id.vars = 1) |>
   {\(x) x[, .(bias = mean(value) - mean(pop_data$NEP),
               sd = sd(value),

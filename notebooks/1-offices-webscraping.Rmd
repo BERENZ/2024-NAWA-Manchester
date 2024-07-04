@@ -1,0 +1,128 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("rvest")
+library("stringr")
+library("RcppSimdJson")
+library("data.table")
+library("zoo")
+```
+
+List of offices with address
+
+```{r}
+d <- readLines("https://psz.praca.gov.pl/rynek-pracy/bazy-danych/katalog-urzedow")
+json_address <- d[3954]
+json_address <- str_replace(json_address, "\\t\\tsearchResults.replaceResults\\(\\'", "")
+json_address <- str_replace(json_address, "\\'\\)\\;", "")
+json_address <- fparse(json_address)
+```
+
+Save NIP data
+
+```{r}
+offices <- lapply(json_address$results$provinces$offices, \(x) rbindlist(lapply(x[[1]], as.data.frame))) |> rbindlist()
+branches <- lapply(json_address$results$provinces$offices, \(x) rbindlist(lapply(x[[2]], as.data.frame), fill = T)) |> rbindlist()
+branches <- branches[!is.na(glaId)]
+offices <- rbind(offices, branches, fill = T)
+writeLines(text = unique(offices[nchar(nip) == 10]$nip), con = "../data-raw/offices-nip.txt")
+```
+
+
+
+```{python}
+from gusregon import GUS
+import pandas as pd
+import numpy as np
+import os
+from pprint import pprint
+from RegonAPI import RegonAPI
+from RegonAPI.exceptions import ApiAuthenticationError
+
+API_KEY=os.environ['GUS_API']
+
+api = RegonAPI(
+    bir_version="bir1.1", is_production=True, timeout=10, operation_timeout=10
+)
+try:
+    api.authenticate(key=API_KEY)
+except ApiAuthenticationError as e:
+    print("[-]", e)
+    exit(0)
+except Exception as e:
+    raise
+
+gus=GUS(api_key=API_KEY)
+```
+
+```{python}
+with open("../data-raw/offices-nip.txt") as f:
+  content = f.readlines()
+content = [x.strip() for x in content]
+content[1:10]
+```
+
+```{python}
+regony = {}
+for id, nip in enumerate(content):
+  wyn = gus.search(nip = nip)
+  if wyn != None:
+    regony[nip]  =  wyn
+```
+
+```{python}
+m = pd.DataFrame(regony).transpose()
+m.index.name = 'nip_szukany'
+m.reset_index(inplace=True)
+m.shape
+```
+
+```{r}
+offices_data <- fread("../data-raw/offices-nip-result-api.csv", colClasses = "character")
+offices[nip %in% setdiff(unique(offices[nchar(nip) == 10]$nip), offices_data$nip)]
+```
+
+```{r}
+substr(offices_data[jednosteklokalnych > 0, .(regon14, jednosteklokalnych)]$regon14,1,9) |> dput()
+```
+
+```{python}
+lokalne = ["891129301", "430123913", "970139988", "472349582", "472297833", "357117180", "016179742", "050867303", "771286120", "511326393",  "570866270", "810145875", "810146194"]
+
+lokalne_df = pd.DataFrame()
+for lok in lokalne:
+  print(lok)
+  result = api.dataDownloadFullReport(lok, "BIR11OsPrawnaListaJednLokalnych")
+  lokalne_df = pd.concat([lokalne_df, pd.DataFrame(result)], ignore_index=True)
+  
+lokalne_df
+
+lokalne_df.to_csv("../data-raw/offices-nip-result-api-lokalne.csv")
+```
+
+```{r}
+offices_data_lok <- fread("../data-raw/offices-nip-result-api-lokalne.csv", colClasses = "character")
+offices_data_lok
+```
+
+Combine all data into one file
+
+```{r}
+offices_full_data <- rbind(
+  offices_data[, .(regon14, nip, nazwa, woj=adsiedzwojewodztwo_symbol, pow=adsiedzpowiat_symbol, gmi =adsiedzgmina_symbol,
+                 miej=adsiedzmiejscowosc_symbol, ul=adsiedzulica_symbol, nr = adsiedznumernieruchomosci, lok=adsiedznumerlokalu,
+                 miej_naz=adsiedzmiejscowosc_nazwa, ul_naz=adsiedzulica_nazwa)],
+  offices_data_lok[, .(regon14=lokpraw_regon14, nazwa=lokpraw_nazwa, woj=lokpraw_adSiedzWojewodztwo_Symbol, pow=lokpraw_adSiedzPowiat_Symbol, 
+                     gmi =lokpraw_adSiedzGmina_Symbol,
+                 miej=lokpraw_adSiedzMiejscowosc_Symbol, ul=lokpraw_adSiedzUlica_Symbol, nr = lokpraw_adSiedzNumerNieruchomosci, lok=lokpraw_adSiedzNumerLokalu,
+                 miej_naz=lokpraw_adSiedzMiejscowosc_Nazwa, ul_naz=lokpraw_adSiedzUlica_Nazwa)],
+fill = T)
+
+offices_full_data <- offices_full_data[order(regon14)]
+offices_full_data[, nip:= zoo::na.locf(nip), .(substr(regon14,1,9))]
+fwrite(x = offices_full_data[!nip %in% c("5262895101")], file = "../data-raw/offices-regons.csv", quote = T)
+```
+

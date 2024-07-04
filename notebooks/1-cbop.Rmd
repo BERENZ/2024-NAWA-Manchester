@@ -1,0 +1,237 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Bash processing
+
+```{bash}
+tar -tvf /Users/berenz/mac/zbiory/cbop/cbop-2021.tar.gz | head -n 5
+```
+
+```{bash}
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2021.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2021/2021_03_31_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2021.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2021/2021_06_30_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2021.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2021/2021_09_30_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2021.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2021/2021_12_31_full.json
+
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2022.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2022/2022_03_31_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2022.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2022/2022_06_30_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2022.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2022/2022_09_30_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2022.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2022/2022_12_31_full.json
+
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2023.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2023/2023_03_31_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2023.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2023/2023_06_30_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2023.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2023/2023_09_30_full.json
+tar -zxvf /Users/berenz/mac/zbiory/cbop/cbop-2023.tar.gz -C /Users/berenz/mac/zbiory/cbop/ ./2023/2023_12_31_full.json
+```
+
+```{bash}
+mkdir /Users/berenz/mac/zbiory/cbop/end-of-quarters
+mv /Users/berenz/mac/zbiory/cbop/2020/*.json /Users/berenz/mac/zbiory/cbop/end-of-quarters/
+mv /Users/berenz/mac/zbiory/cbop/2021/*.json /Users/berenz/mac/zbiory/cbop/end-of-quarters/
+mv /Users/berenz/mac/zbiory/cbop/2022/*.json /Users/berenz/mac/zbiory/cbop/end-of-quarters/
+mv /Users/berenz/mac/zbiory/cbop/2023/*.json /Users/berenz/mac/zbiory/cbop/end-of-quarters/
+```
+
+```{bash}
+rm -rf /Users/berenz/mac/zbiory/cbop/{2020,2021,2022,2023}
+```
+
+# R processing
+
+Reading the data
+
+```{r}
+library("RcppSimdJson")
+library("data.table")
+library("stringr")
+library("lubridate")
+library("tinytable")
+library("xtable")
+```
+
+```{r}
+source("../codes/functions.R")
+```
+
+```{r}
+cbop_files <- dir("/Users/berenz/mac/zbiory/cbop/end-of-quarters/", full.names = T)
+regony <- readRDS("~/mac/zbiory/popyt/regony9-operaty-21-23.rds")
+offices <- fread("../data-raw/offices-regons.csv", colClasses = "character")
+```
+
+Read the data and clean:
+
+- population of vacancies -- whether vacancies are in line with the definition used in the JVS
+- population of entities -- whether the entities are in line with the defintion used in the JVS
+
+2021
+
+```{r}
+suppressWarnings(
+  cbop_2021 <- lapply(cbop_files[1:4], 
+                      \(x) read_cbop(x, as.Date(str_replace_all(str_extract(x,"\\d{4}_\\d{2}_\\d{2}"), "_", "-"))))
+  )
+
+cbop_2021 <- rbindlist(cbop_2021, fill = T)
+
+cbop_2021[typOferty == "OFERTA_PRACY" & czyWazna == TRUE & 
+     as.Date(poz_dataPrzyjZglosz) <= qdata & as.Date(poz_ofertaWaznaDo) >= qdata & 
+     war_kraj == "Polska" &
+     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło") & 
+     zagranicznaEures == FALSE & 
+      str_detect(war_stanowisko, regex("staż|praktyk", T), negate = T) & 
+     (str_extract(war_wynagrodzenieBrutto, "[A-Z]{3}") %in% c("PLN", NA)), flag_pop_wak := TRUE]
+
+cbop_2021[!is.na(prac_regon) & nchar(prac_regon) >0 & 
+            substr(prac_regon, 1, 9) %in% regony[N == 2021 & nchar(regon9)>0 & !is.na(regon9)]$regon9, flag_pop_ent := TRUE]
+
+cbop_2021[!is.na(prac_nip) & nchar(prac_nip) > 0 & 
+            prac_nip %in% regony[N == 2021 & nchar(nip)>0 & !is.na(nip)]$nip, flag_pop_ent := TRUE]
+```
+
+2022
+
+```{r}
+suppressWarnings(
+  cbop_2022 <- lapply(cbop_files[5:8], 
+                      \(x) read_cbop(x, as.Date(str_replace_all(str_extract(x,"\\d{4}_\\d{2}_\\d{2}"), "_", "-"))))
+  )
+
+cbop_2022 <- rbindlist(cbop_2022, fill = T)
+
+cbop_2022[typOferty == "OFERTA_PRACY" & czyWazna == TRUE & 
+     as.Date(poz_dataPrzyjZglosz) <= qdata & as.Date(poz_ofertaWaznaDo) >= qdata & 
+     war_kraj == "Polska" &
+     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło") & 
+     zagranicznaEures == FALSE & 
+      str_detect(war_stanowisko, regex("staż|praktyk", T), negate = T) & 
+     (str_extract(war_wynagrodzenieBrutto, "[A-Z]{3}") %in% c("PLN", NA)), flag_pop_wak := TRUE]
+
+cbop_2022[!is.na(prac_regon) & nchar(prac_regon) >0 & 
+            substr(prac_regon, 1, 9) %in% regony[N == 2022 & nchar(regon9)>0 & !is.na(regon9)]$regon9, flag_pop_ent := TRUE]
+cbop_2022[!is.na(prac_nip) & nchar(prac_nip) > 0 & 
+            prac_nip %in% regony[N == 2022 & nchar(nip)>0 & !is.na(nip)]$nip, flag_pop_ent := TRUE]
+```
+
+2023
+
+```{r}
+suppressWarnings(
+  cbop_2023 <- lapply(cbop_files[9:12], 
+                      \(x) read_cbop(x, as.Date(str_replace_all(str_extract(x,"\\d{4}_\\d{2}_\\d{2}"), "_", "-"))))
+  )
+
+cbop_2023 <- rbindlist(cbop_2023, fill = T)
+
+cbop_2023[typOferty == "OFERTA_PRACY" & czyWazna == TRUE & 
+     as.Date(poz_dataPrzyjZglosz) <= qdata & as.Date(poz_ofertaWaznaDo) >= qdata & 
+     war_kraj == "Polska" &
+     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło") & 
+     zagranicznaEures == FALSE & 
+      str_detect(war_stanowisko, regex("staż|praktyk", T), negate = T) & 
+     (str_extract(war_wynagrodzenieBrutto, "[A-Z]{3}") %in% c("PLN", NA)), flag_pop_wak := TRUE]
+
+cbop_2023[!is.na(prac_regon) & nchar(prac_regon) >0 & 
+            substr(prac_regon, 1, 9) %in% regony[N == 2023 & nchar(regon9)>0 & !is.na(regon9)]$regon9, flag_pop_ent := TRUE]
+
+cbop_2023[!is.na(prac_nip) & nchar(prac_nip) > 0 & 
+            prac_nip %in% regony[N == 2023 & nchar(nip)>0 & !is.na(nip)]$nip, flag_pop_ent := TRUE]
+```
+
+All dataset
+
+```{r}
+cbop_all <- rbind(cbop_2021, cbop_2022, cbop_2023, fill = T)
+cbop_all[, row_id := 1:.N]
+cbop_all[, prac_regon:=str_extract(prac_regon, "\\d{1,}")]
+cbop_all[, prac_nip:=str_extract(prac_nip, "\\d{1,}")]
+head(cbop_all[, .(hash, prac_regon)])
+```
+
+Cleaning identifiers data
+
++ correct identifiers
+
+```{r}
+cbop_all[nchar(prac_regon) == 14 & str_detect(prac_regon, "00000$"), prac_regon:=substr(prac_regon,1,9)]
+cbop_all[nchar(prac_regon) == 10 & prac_regon == prac_nip, prac_regon := NA]
+cbop_all[nchar(prac_regon) == 3, prac_regon := NA]
+cbop_all[nchar(prac_regon) == 10, prac_regon := NA]
+cbop_all[nchar(prac_regon) == 8, prac_regon := str_pad(prac_regon, 9, "left", "0")]
+```
+
++ if the identifier is correct
+
+Add last digit
+
+```{r}
+cbop_all[nchar(prac_regon) == 9, regon9_last_dig:=substr(prac_regon, 9,9)]
+cbop_all[nchar(prac_regon) == 14, regon14_last_dig:=substr(prac_regon, 14,14)]
+cbop_all[nchar(prac_nip) == 10, nip_last_dig:=substr(prac_nip, 10,10)]
+```
+
+Check the identifiers
+
+```{r}
+cbop_all[nchar(prac_regon) == 9, regon9_check:=regon_check_vec(prac_regon, as.numeric(regon9_last_dig))]
+cbop_all[nchar(prac_regon) == 14, regon14_check:=regon_check_vec(prac_regon, as.numeric(regon14_last_dig), 14)]
+cbop_all[nchar(prac_nip) == 10, nip_check:=nip_check_vec(prac_nip, as.numeric(nip_last_dig))]
+```
+
+All NIPs are correct, there are errors in REGONS
+
+```{r}
+cbop_all[,.N, regon9_check]
+cbop_all[,.N, regon14_check]
+```
+
++ regon is not 9 or 14 digits
+
+```{r}
+cbop_all[,.N, keyby=.(n=nchar(prac_regon))]
+```
+
++ nip is not 10 digits
+
+```{r}
+cbop_all[,.N, keyby=.(n=nchar(prac_nip))]
+```
+
+
++ flag regons the same as offices if 
+
+```{r}
+cbop_all[prac_publikowacDanePracodawcy == FALSE, .N, .(n = substr(prac_regon, 1, 9) %in% substr(offices$regon14, 1,9) | prac_nip %in% offices$nip)]
+```
+
+
+Information about the dates
+
+```{r}
+dates <- as.Date(str_replace_all(str_extract(cbop_files, "\\d{4}_\\d{2}_\\d{2}"), "_", "-"))
+data.frame(dates, days = wday(dates,label=T,abbr = F, week_start = 1))
+```
+
+Information on data
+
+```{r}
+cbop_all[, 
+         .(
+           init_vac = sum(poz_lWolnychMiejsc),
+           pop_v = sum(poz_lWolnychMiejsc*flag_pop_wak, na.rm=T), 
+           pop_v_share = sum(poz_lWolnychMiejsc*flag_pop_wak, na.rm=T)/sum(poz_lWolnychMiejsc)*100,
+           pop_ent_v = sum(poz_lWolnychMiejsc*flag_pop_ent*flag_pop_wak,na.rm=T), 
+           pop_ent_v_share = sum(poz_lWolnychMiejsc*flag_pop_ent*flag_pop_wak,na.rm=T)/sum(poz_lWolnychMiejsc)*100
+           ), 
+         .(data=as.character(qdata))] |> 
+  xtable(digits = 2)|>
+  print.xtable(include.rownames = F, format.args = list(big.mark = ","))
+```
+
+
+
+
+
+
