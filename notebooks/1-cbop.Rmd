@@ -79,16 +79,11 @@ cbop_2021 <- rbindlist(cbop_2021, fill = T)
 cbop_2021[typOferty == "OFERTA_PRACY" & czyWazna == TRUE & 
      as.Date(poz_dataPrzyjZglosz) <= qdata & as.Date(poz_ofertaWaznaDo) >= qdata & 
      war_kraj == "Polska" &
-     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło") & 
+     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło",
+                                    "Umowa agencyjna") & 
      zagranicznaEures == FALSE & 
       str_detect(war_stanowisko, regex("staż|praktyk", T), negate = T) & 
      (str_extract(war_wynagrodzenieBrutto, "[A-Z]{3}") %in% c("PLN", NA)), flag_pop_wak := TRUE]
-
-cbop_2021[!is.na(prac_regon) & nchar(prac_regon) >0 & 
-            substr(prac_regon, 1, 9) %in% regony[N == 2021 & nchar(regon9)>0 & !is.na(regon9)]$regon9, flag_pop_ent := TRUE]
-
-cbop_2021[!is.na(prac_nip) & nchar(prac_nip) > 0 & 
-            prac_nip %in% regony[N == 2021 & nchar(nip)>0 & !is.na(nip)]$nip, flag_pop_ent := TRUE]
 ```
 
 2022
@@ -104,15 +99,11 @@ cbop_2022 <- rbindlist(cbop_2022, fill = T)
 cbop_2022[typOferty == "OFERTA_PRACY" & czyWazna == TRUE & 
      as.Date(poz_dataPrzyjZglosz) <= qdata & as.Date(poz_ofertaWaznaDo) >= qdata & 
      war_kraj == "Polska" &
-     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło") & 
+     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło",
+                                    "Umowa agencyjna") & 
      zagranicznaEures == FALSE & 
       str_detect(war_stanowisko, regex("staż|praktyk", T), negate = T) & 
      (str_extract(war_wynagrodzenieBrutto, "[A-Z]{3}") %in% c("PLN", NA)), flag_pop_wak := TRUE]
-
-cbop_2022[!is.na(prac_regon) & nchar(prac_regon) >0 & 
-            substr(prac_regon, 1, 9) %in% regony[N == 2022 & nchar(regon9)>0 & !is.na(regon9)]$regon9, flag_pop_ent := TRUE]
-cbop_2022[!is.na(prac_nip) & nchar(prac_nip) > 0 & 
-            prac_nip %in% regony[N == 2022 & nchar(nip)>0 & !is.na(nip)]$nip, flag_pop_ent := TRUE]
 ```
 
 2023
@@ -128,84 +119,103 @@ cbop_2023 <- rbindlist(cbop_2023, fill = T)
 cbop_2023[typOferty == "OFERTA_PRACY" & czyWazna == TRUE & 
      as.Date(poz_dataPrzyjZglosz) <= qdata & as.Date(poz_ofertaWaznaDo) >= qdata & 
      war_kraj == "Polska" &
-     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło") & 
+     !war_rodzajZatrudnienia %in% c("Praktyka absolwencka", "Nie dotyczy", "Umowa zlecenie / Umowa o świadczenie usług", "Umowa o dzieło",
+                                    "Umowa agencyjna") & 
      zagranicznaEures == FALSE & 
       str_detect(war_stanowisko, regex("staż|praktyk", T), negate = T) & 
      (str_extract(war_wynagrodzenieBrutto, "[A-Z]{3}") %in% c("PLN", NA)), flag_pop_wak := TRUE]
-
-cbop_2023[!is.na(prac_regon) & nchar(prac_regon) >0 & 
-            substr(prac_regon, 1, 9) %in% regony[N == 2023 & nchar(regon9)>0 & !is.na(regon9)]$regon9, flag_pop_ent := TRUE]
-
-cbop_2023[!is.na(prac_nip) & nchar(prac_nip) > 0 & 
-            prac_nip %in% regony[N == 2023 & nchar(nip)>0 & !is.na(nip)]$nip, flag_pop_ent := TRUE]
 ```
 
 All dataset
 
 ```{r}
-cbop_all <- rbind(cbop_2021, cbop_2022, cbop_2023, fill = T)
-cbop_all[, row_id := 1:.N]
-cbop_all[, prac_regon:=str_extract(prac_regon, "\\d{1,}")]
-cbop_all[, prac_nip:=str_extract(prac_nip, "\\d{1,}")]
-head(cbop_all[, .(hash, prac_regon)])
-```
-
-Cleaning identifiers data
-
-+ correct identifiers
-
-```{r}
-cbop_all[nchar(prac_regon) == 14 & str_detect(prac_regon, "00000$"), prac_regon:=substr(prac_regon,1,9)]
-cbop_all[nchar(prac_regon) == 10 & prac_regon == prac_nip, prac_regon := NA]
-cbop_all[nchar(prac_regon) == 3, prac_regon := NA]
-cbop_all[nchar(prac_regon) == 10, prac_regon := NA]
-cbop_all[nchar(prac_regon) == 8, prac_regon := str_pad(prac_regon, 9, "left", "0")]
-```
-
-+ if the identifier is correct
-
-Add last digit
-
-```{r}
+cbop_all <- rbind(cbop_2021, cbop_2022, cbop_2023, fill = T) ## merge all
+cbop_all[, row_id := 1:.N] ## row identifiers
+cbop_all[, prac_regon:=str_extract(prac_regon, "\\d{1,}")] ## remove non-numbers
+cbop_all[, prac_nip:=str_extract(prac_nip, "\\d{1,}")] ## ## remove non-numbers
+cbop_all[str_detect(prac_nip, "^([0-9])\\1*$"), prac_nip := NA] ## if all numbers are the same -- NA
+cbop_all[str_detect(prac_regon, "^([0-9])\\1*$"), prac_regon := NA] ## if all numbers are the same -- NA
+cbop_all[nchar(prac_regon) == 14 & str_detect(prac_regon, "00000$"), prac_regon:=substr(prac_regon,1,9)] ## correct number of digits
+cbop_all[nchar(prac_regon) == 10 & prac_regon == prac_nip, prac_regon := NA] ## regon the same as np 
+cbop_all[nchar(prac_regon) %in% c(3,10), prac_regon := NA] ## incorrect numbers
+cbop_all[nchar(prac_regon) == 8, prac_regon := str_pad(prac_regon, 9, "left", "0")] ## add leading zeros
+cbop_all <- cbop_all[!is.na(prac_regon) | !is.na(prac_nip)] ## remove missing in both identifiers
+cbop_all[!is.na(prac_nip), regon9_count:=uniqueN(substr(prac_regon[!is.na(prac_regon)],1,9)), prac_nip] ## count unique regons in ni
+cbop_all[!is.na(prac_regon), regon9_count:=uniqueN(prac_nip), prac_regon] ## count unique nip byu regons
 cbop_all[nchar(prac_regon) == 9, regon9_last_dig:=substr(prac_regon, 9,9)]
 cbop_all[nchar(prac_regon) == 14, regon14_last_dig:=substr(prac_regon, 14,14)]
 cbop_all[nchar(prac_nip) == 10, nip_last_dig:=substr(prac_nip, 10,10)]
+cbop_all[nchar(prac_regon) == 9, regon9_check:=regon_check_vec(prac_regon, as.numeric(regon9_last_dig))] # 646 in regon 9 digits
+cbop_all[nchar(prac_regon) == 14, regon14_check:=regon_check_vec(prac_regon, as.numeric(regon14_last_dig), 14)] # 30 in regon 14 digits
+cbop_all[nchar(prac_nip) == 10, nip_check:=nip_check_vec(prac_nip, as.numeric(nip_last_dig))] # NIPs are correct!
+cbop_all[regon9_check == FALSE, prac_regon := NA]
+cbop_all[regon14_check == FALSE, prac_regon := NA]
 ```
 
-Check the identifiers
+Identifiers for API
 
 ```{r}
-cbop_all[nchar(prac_regon) == 9, regon9_check:=regon_check_vec(prac_regon, as.numeric(regon9_last_dig))]
-cbop_all[nchar(prac_regon) == 14, regon14_check:=regon_check_vec(prac_regon, as.numeric(regon14_last_dig), 14)]
-cbop_all[nchar(prac_nip) == 10, nip_check:=nip_check_vec(prac_nip, as.numeric(nip_last_dig))]
+cbop_all[!is.na(prac_nip), .N, prac_nip]$prac_nip |> 
+  writeLines(text = _, con = "../data-raw/cbop-identifiers/cbop-nips.txt")
+cbop_all[!is.na(prac_regon), .N, .(regon9=substr(prac_regon,1,9))]$regon9  |>
+  writeLines(text = _, con = "../data-raw/cbop-identifiers/cbop-regons.txt")
 ```
 
-All NIPs are correct, there are errors in REGONS
+Deductive imputation of regon numbers  
+
+- 8621
 
 ```{r}
-cbop_all[,.N, regon9_check]
-cbop_all[,.N, regon14_check]
+cbop_all[!is.na(prac_nip), 
+         regon_flag := uniqueN(substr(prac_regon,1,9)) == 2 & uniqueN(substr(prac_regon[!is.na(prac_regon)],1,9)) == 1, 
+prac_nip]
+cbop_all[regon_flag == T, prac_regon := substr(prac_regon[!is.na(prac_regon)][1], 1,9), prac_nip] ## 4562 still missingcbop_all[]
 ```
 
-+ regon is not 9 or 14 digits
+- imputation based on regon data from JVS
 
 ```{r}
-cbop_all[,.N, keyby=.(n=nchar(prac_regon))]
+nip_regons_missing <- cbop_all[, .(N=.N, n_reg=uniqueN(substr(prac_regon,1,9)), n_miss = uniqueN(prac_regon[is.na(prac_regon)])), prac_nip][n_miss > 0 & n_reg == n_miss]$prac_nip
+
+cbop_all[regony[nip %in% nip_regons_missing, .N, .(prac_nip=nip, regon9)][, N:=uniqueN(regon9), prac_nip],
+         on = "prac_nip", prac_regon := i.regon9] ## 1453 is still missing but not in the population
 ```
 
-+ nip is not 10 digits
++ flag regons the same as offices (254)
 
 ```{r}
-cbop_all[,.N, keyby=.(n=nchar(prac_nip))]
+cbop_all[, .N, .(n = substr(prac_regon, 1, 9) %in% substr(offices$regon14, 1,9) | prac_nip %in% offices$nip)]
 ```
 
-
-+ flag regons the same as offices if 
+Simplified version: regon9 and nip in the population
 
 ```{r}
-cbop_all[prac_publikowacDanePracodawcy == FALSE, .N, .(n = substr(prac_regon, 1, 9) %in% substr(offices$regon14, 1,9) | prac_nip %in% offices$nip)]
+for (y in 2021:2023) {
+
+  cbop_all[year(qdata) == y & (
+  substr(prac_regon,1,9) %in% regony[N == y & !is.na(regon9)]$regon9 | 
+  prac_nip %in% regony[N == y & !is.na(nip)]$nip), flag_pop_ent := TRUE]
+  
+}
+
 ```
 
+Duplicates: the same nip, regon, vacancies, position but different office
+
+```{r}
+cbop_all[flag_pop_wak == T & flag_pop_ent == T, 
+         ":="(n_times = .N, n_gr = .GRP), 
+         .(qdata, prac_nip, prac_regon, poz_lWolnychMiejsc, poz_lWolnychMiejscDlaNiepeln, 
+           war_stanowisko, war_wynagrodzenieBrutto, war_lGodzinWTygodniu, war_wymiarEtatu, 
+           war_miejscePracy, war_systemWynagradzania, war_dataRozpoczeciaPracy)
+         ]
+
+```
+
+
+```{r}
+cbop_all[poz_dni <= 150, .(N=.N, wak = sum(poz_lWolnychMiejsc)), keyby=.(flag_pop_ent, flag_pop_wak)][, ":="(p= N/sum(N)*100, p_wak=wak/sum(wak)*100)][]
+```
 
 Information about the dates
 
@@ -230,8 +240,19 @@ cbop_all[,
   print.xtable(include.rownames = F, format.args = list(big.mark = ","))
 ```
 
+```{r}
+cbop_vacs <- cbop_all[flag_pop_wak == T & flag_pop_ent == T, head(.SD,1), n_gr][
+  , .(vac_all = sum(poz_lWolnychMiejsc),
+      vac_all_to_150days = sum(poz_lWolnychMiejsc*(poz_dni <= 150)),
+      vac_all_between_1_150days = sum(poz_lWolnychMiejsc*(poz_dni > 0 & poz_dni <= 150))
+      ), keyby=.(kw=qdata, year=year(qdata), regon9=substr(prac_regon,1,9))]
 
+cbop_vacs[regony[,.(regon9, year=N,n_units)], on = c("regon9", "year"), n_units:=i.n_units]
 
+```
 
+```{r}
+
+```
 
 

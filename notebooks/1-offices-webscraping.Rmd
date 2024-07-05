@@ -67,7 +67,7 @@ content[1:10]
 
 ```{python}
 regony = {}
-for id, nip in enumerate(content):
+for id, nip in enumerate(tqdm(content)):
   wyn = gus.search(nip = nip)
   if wyn != None:
     regony[nip]  =  wyn
